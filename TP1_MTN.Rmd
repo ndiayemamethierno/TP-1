@@ -1,0 +1,727 @@
+---
+title: "TP1"
+author: "Mame Thierno NDIAYE"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    code_folding: show
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE, 
+	results = "Hide"
+)
+```
+
+
+```{r remove environment variables}
+
+rm(list = ls())
+```
+
+# Importation des packages
+```{r}
+#Package à installer
+#install.packages("ggstats")
+
+library(haven)
+library(tidyverse)
+library(here)
+library(readxl)
+library(sjPlot)
+library(ggplot2)
+library(ggspatial)
+library(sf)
+library(leaflet)
+library(leafem)
+library(leaflet.extras)
+library(RColorBrewer) 
+library(htmlwidgets)
+library(htmltools)
+library(ggstats)
+
+```
+
+# Préparation des données
+## Importation et mise en forme
+```{r}
+#Importer la base
+path <- here()
+projet <- read_excel(paste0(path, "/Base_Projet.xlsx"))
+#nombre de lignes et de colonnes
+nbre_row <- nrow(projet) #Nombre de lignes ou d'observations
+print(nbre_row)
+nbre_col <- ncol(projet) #Nombre de colonnes ou variables
+print(nbre_col)
+#Presence de valeurs manquantes
+table(is.na(projet$key)) 
+ # Pas de valeurs manquantes 
+
+```
+
+
+# Création de variables 
+
+```{r}
+#Renommer les variables
+projet <- projet %>% dplyr::rename("region" = "q1", "departement" = "q2", "sexe" = "q23")
+
+#Créer la variable sexe_2
+projet <- projet %>% dplyr::mutate(sexe_2 = dplyr::recode(sexe, "Femme" = 1, .default = 0))
+projet$sexe_2 <- labelled::labelled(projet$sexe_2, c(`Femme` = 1, `Homme` = 0))
+
+# Créer la base de donnée langues
+langues <- projet %>% dplyr::select("key", starts_with("q24a_"))
+#Créer la variable parle
+langues <- langues %>% dplyr::mutate(parle = rowSums(select(., starts_with("q24a_"))))
+#Selection dse variables key et parle dans langues
+langues <- langues %>% dplyr::select("key", "parle")
+#merge entre projet et langues
+projet_merge <- merge(projet, langues, by = "key")
+#projet_merge_1 <- left_join(projet,langues, by= "key") une autre possibilité
+```
+
+# Analyses descriptives
+
+```{r}
+#Réprtition des PME
+ #sexe
+projet_merge %>% 
+  plot_frq(coord.flip =T,sexe,show.na = T, geom.colors ="blue", title =c("Répartition des PME selon le niveau d’instruction"))
+
+ #niveau d’instruction
+projet_merge %>% 
+  plot_frq(coord.flip =T,q25,show.na = T,
+  title = c("Répartition des PME selon le niveau d’instruction"))
+ #statut juridique
+projet_merge %>% 
+  plot_frq(coord.flip =T,q12,show.na = T, title =c("Répartition des PME selon le statut juridique"))
+ #propriétaire/locataire
+projet_merge %>% 
+  plot_frq(coord.flip =T,q81,show.na = T,title=c("Répartition des PME selon propriétaire/locataire"))
+
+ #statut juridique et le sexe
+ggplot(projet_merge) +
+ aes(x = q12, fill = sexe, group = sexe) +
+ geom_bar() +
+ scale_fill_manual(values = c(Femme = "#EB42CA", 
+Homme = "#2C0690")) +
+ labs(x = "Statut juridique", y = "Fréquence") +
+ ggtitle("Répartition des PME selon le statut juridique et le sexe")+
+ theme_minimal()
+
+ #niveau d'éducation et le sexe
+ggplot(projet_merge) +
+ aes(x = q25, fill = sexe, group = sexe) +
+ geom_bar() +
+ scale_fill_manual(values = c(Femme = "#EB42CA", 
+Homme = "#2C0690")) +
+ labs(x = "Niveau d'éducation", y = "Fréquence") +
+ ggtitle("Répartition des PME selon le niveau d'éducation et le sexe") +
+ theme_minimal()
+
+ #Propriétaire/locataire suivant le sexe
+ggplot(projet_merge) +
+ aes(x = sexe, fill = q81, group = q81) +
+ geom_bar() +
+ scale_fill_manual(values = c(Propriétaire = "#EB42CA", 
+Locataire = "#2C0690")) +
+ labs(x = "Sexe", y = "Fréquence") +
+ ggtitle("Répartition des PME selon Propriétaire/locataire suivant le sexe") +
+ theme_minimal()
+
+```
+
+*Analyses* :
+
+*Répartition des PME selon le sexe du dirigeant/responsable :*
+La répartition des PME agroalimentaires selon le sexe du dirigeant ou du responsable montre une tendance significative. Sur 20 PME, 15 sont dirigées par des femmes, représentant ainsi une proportion majoritaire. Cette constatation suggère une forte présence féminine dans la gestion des PME agroalimentaires, suggérant un aspect de l'entrepreneuriat féminin dans ce secteur spécifique. 
+*Répartition des PME selon le niveau d'education dirigeant/responsable :*
+L'analyse de la répartition montre que la quasitotalité de ces individus n'a pas dépassé le niveau secondaire. La majorité, représentant 31,6%, ne possède aucun niveau d'éducation officiellement reconnu. Parallèlement, une part significative, soit 29,6%, a atteint le niveau secondaire.
+
+*Répartition des PME selon le statut juridique :*
+Concernant le statut juridique, Une majorité écrasante, représentant 71,6% des PME, est classée sous le statut de GIE (Groupement d'Intérêt Économique). Cette prédominance souligne l'importance des collaborations économiques et des partenariats dans ce secteur. De manière intéressante, on observe également une présence non négligeable de PME informelles, représentant 15,2% du total. En revanche, les SUARL, SARL, SA et associations sont moins fréquentes, ne représentant que 13,2%. 
+
+## Fonctions pour les statitiques descriptives
+
+```{r}
+    ########## Statistique descriptive univariée ########
+
+univarie <- function(data, variable){
+  obj <- data[[variable]]
+
+  ####### Variable quantitative ########
+  if (is.numeric(obj)){
+    #### Statistiques descriptives ######
+    summary_table <- projet %>% 
+      select(variable) %>% 
+        gtsummary::tbl_summary(
+          type = variable ~ "continuous2", #spécifie le type de résumé
+          statistic = list(variable ~ c("{mean}", "{sd}", "{median}", "{min}, {max}", "{p25}; {p75}","{N_miss}; {p_miss}")),
+          digits = variable ~ 2 #précisez le nombre de décimales pour l'arrondi
+           )%>% 
+           gtsummary::bold_labels() # Mettre en gras les étiquettes de la variable
+        summary_table
+    ###### Histogramme #######
+    hist(obj, 
+      col = c("orange"),
+      main = paste("Histogramme"),
+      ylab = "Frequence",
+      xlab = variable)
+            
+    ###### Boite à moustache #######
+    boxplot(obj, col = c("blue"),main = "Boxplot", ylab =
+              "Quantiles")
+            
+  ####### Variable qualitative ########
+   } else if (!is.numeric(obj)){
+    summary_table <- projet %>% 
+      select(variable) %>% 
+      gtsummary::tbl_summary(
+        statistic = list(variable ~ "{n} ({p}%)"),
+        digits = variable ~ 2 #précisez le nombre de décimales pour l'arrondi
+      )%>% 
+      gtsummary::bold_labels() # Mettre en gras les étiquettes de la variable
+    summary_table
+    barplot(table(obj), main="Diagramme en barre", 
+        xlab=variable,
+        col="orange")
+  }
+}
+
+##### Exempele ######
+
+ ########## Statistique descriptive bivariée ########
+
+bivarie <- function(data, var_1, var_2 ){
+  obj_1 <- data[[var_1]]
+  obj_2 <- data[[var_2]]
+  
+  #### Deux variables quantitatives ########
+  if ((is.numeric(obj_1)) && (is.numeric(obj_2))){
+    ##### Tests de corrélation #####
+    m <- stats::lm(as.formula(paste(var_1, "~", var_2)), data = data)
+    test <- m %>%  
+      gtsummary::tbl_regression() %>% #des résultats de la régression linéaire
+      gtsummary::add_glance_source_note() #stats en notes du tableau
+    print(test)
+  ##### Nuage de points ######
+   graph <- ggplot2::ggplot(data) +
+    aes(x = !!rlang::sym(var_1), y = !!rlang::sym(var_2)) +
+    geom_smooth(method="lm") +  # Droite de regréssion
+    geom_point(colour = "blue", alpha = .25) +
+    ggtitle("Nuage de points")+
+    theme_light()
+  graph
+  }
+
+    #### Variable quantitative et qualitative ########
+  if ((is.numeric(obj_1)) && (!is.numeric(obj_2))){
+  ##### tableau statistique ######
+   tab <- data %>% 
+      gtsummary::tbl_summary(
+        include = var_1,
+        by = var_2,
+        type = var_1 ~ "continuous2",
+        statistic = list(var_1 ~ c("{N_nonmiss}; {p_miss}", 
+                            "{mean} ({sd})", "{median}","{p25}; {p75}")),
+        digits = var_1 ~ 2
+      ) %>% 
+    gtsummary::add_p() %>%  #Ajouter p_value
+    gtsummary::add_stat_label() #une étiquette pour les statistiques récapitulatives 
+   ##### Boîtes à moustaches ######
+   tab
+    graph <- ggplot2::ggplot(data) +
+      aes(x = !!rlang::sym(var_2), y = !!rlang::sym(var_1)) +
+      geom_boxplot(fill = "lightblue") +
+      ggtitle("Boxplot")+
+      theme_light()
+    graph
+  }
+  if (!is.numeric(obj_1) && is.numeric(obj_2)){
+    errorCondition("C'est la première variable doit être numérique")
+  }
+  
+  #### Deux variables qualitatives ########
+  if (!is.numeric(obj_1) && !is.numeric(obj_2)){
+  ##### tableau statistique ######
+   tab <- data %>% 
+      gtsummary::tbl_cross(
+        col = var_1,
+        row = var_2,
+        percent = "cell"
+      ) %>% 
+    gtsummary::add_p(source_note = TRUE)   #Ajouter p_value
+    tab
+    
+  ##### Graphes ######
+    graph <- ggplot(projet) +
+     aes(x = sexe, fill = q25) +
+     geom_bar(position = "dodge") +
+     scale_fill_hue(direction = 1) +
+     labs(y = "Fréquence", caption = "Graphique") +
+     theme_light()
+    graph
+
+  }
+}
+```
+
+## Analyses descriptives
+
+```{r}
+#Analyse univariée
+univarie(projet, "filiere_1")
+univarie(projet, "filiere_2")
+univarie(projet, "filiere_3")
+univarie(projet, "filiere_4")
+
+```
+
+
+*Analyse unvariée*
+Parmi les PME enquêtées, nous observons une répartition assez diversifiée en termes d'associations dans différentes filières. En effet, 43% des PME sont impliquées dans la filière de l'arachide, tandis que seulement 24% sont impliquées dans la filière de l'anacarde. La filière de la mangue attire environ 36% des PME, tandis que la filière du riz en attire environ 37%.
+
+Ces chiffres suggèrent une distribution inégale des PME dans les différentes filières. Cependant, il est important de noter que les pourcentages cumulés dépassent 100%, ce qui indique que certaines PME peuvent être actives dans plusieurs filières simultanément.
+
+En exploitant Un tableaux croisé entre ces variables on peut ressortir les PME impliquées dans plusieurs filières.
+```{r}
+prop.table(table(projet$filiere_1, (projet$filiere_2)))
+prop.table(table(projet$filiere_1, (projet$filiere_3)))
+prop.table(table(projet$filiere_1, (projet$filiere_4)))
+prop.table(table(projet$filiere_2, (projet$filiere_3)))
+prop.table(table(projet$filiere_2, (projet$filiere_4)))
+prop.table(table(projet$filiere_3, (projet$filiere_4)))
+```
+
+*Analyse unvariée*
+
+Nous juste allons etudier la relation entre la région et les variables sur les filière
+
+```{r}
+bivarie(projet, "filiere_1", "region")
+bivarie(projet, "filiere_2", "region")
+bivarie(projet, "filiere_3", "region")
+bivarie(projet, "filiere_4", "region")
+```
+*Filière arachide*
+Les résultats montrent que la région de Diourbel, qui compte 34 PME, se distingue par le fait que toutes les PME de cette région travaillent dans la filière de l'arachide. De manière similaire, toutes les PME des régions de Kaolack (21 PME) et de Kaffrine (9 PME) sont également impliquées dans la filière de l'arachide.
+Cependant, les régions de Dakar (une PME), Saint-Louis (42 PME) et Sédhiou (4 PME) ne comptent aucune PME travaillant dans la filière de l'arachide. Au contraire.
+Les régions de Fatick, Ziguinchor et Kolda présentent une faible proportion de PME impliquées dans la filière arachide, ce qui suggère que d'autres filières ou secteurs peuvent être prédominants dans ces régions.
+Enfin, dans la région de Thiès, qui compte 51 PME, on observe que la moitié de ces PME sont impliquées dans la filière arachide. 
+
+*Filière anacarde*
+Concernant la filière de l'anacarde, les régions de Diourbel, Kaffrine, Kaolack, Saint-Louis et Thiès ne présentent aucune PME active dans cette filière.
+En revanche, dans les régions de Kolda et Ziguinchor, on observe que 60% des PME sont impliquées dans la filière de l'anacarde. Cette activité semble être encore plus marquée dans les régions de Sédhiou et Fatick, où respectivement 80% et 70% des PME sont actives dans cette filière.
+Ces données suggèrent que l'anacarde est une filière importante dans les régions de Kolda, Ziguinchor, Sédhiou et Fatick, mais qu'elle n'est pas aussi significative dans les autres régions mentionnées.
+
+*ON FAIT AINSI DE SUITE POUR LES FILIERES RESTANTES*
+En conclusion, les résultats suggèrent qu'il existe une relation significative entre la filière dans laquelle une PME est active et son emplacement géographique par rapport aux régions. Cette relation est étayée par les p-values obtenues lors de l'analyse, ce qui indique une association statistiquement significative entre ces variables.
+
+# cartographie 
+
+```{r}
+#Transformation en donnée spatial
+projet_map <- st_as_sf(projet_merge, coords = c("gps_menlongitude", "gps_menlatitude"))
+#verifier la class
+class(projet_map)
+#Definir la projection
+st_crs(projet_map) <- 4326
+
+#Carte
+ggplot(projet_map) +
+ aes(fill = sexe, colour = sexe) + #Variable à représenter et la différenciation de coloration
+ geom_sf(size = 1.45) + # taille des points
+ scale_fill_hue(direction = 1) +
+ scale_color_hue(direction = 1) 
+ theme_gray() #Thème pour le fond "gris" 
+
+#Ajout des axes, titre, légende, orientation, échelle etc..
+ggplot(projet_map) +
+ aes(fill = sexe, colour = sexe) + 
+ geom_sf(size = 2) + 
+ scale_fill_hue(direction = 1) +
+ scale_color_hue(direction = 1) +
+  #Titre
+ ggtitle("Répartition spatiale des PME selon le sexe") +
+ #Nom des axes
+ labs(x = "X", y = "Y") +
+  #Ajouter l'echelle en bas et à droite (br)
+ annotation_scale(location = "br", width_hint = 0.5) + 
+  #Ajouter de l'orientation en haut à droite(tr)
+ annotation_north_arrow(location = "tr", which_north = "true",      
+ style = north_arrow_fancy_orienteering)
+ theme_gray()
+
+```
+
+
+## Utilisation shapefile Senegal
+
+### Importation
+```{r}
+#Importation
+Sen_path <- paste0(path, "/Sénégal")
+SEN_adm0 <- read_sf(paste0(Sen_path, "/gadm41_SEN_0.shp"))
+SEN_adm1 <- read_sf(paste0(Sen_path, "/gadm41_SEN_1.shp"))
+SEN_adm2 <- read_sf(paste0(Sen_path, "/gadm41_SEN_2.shp"))
+SEN_adm3 <- read_sf(paste0(Sen_path, "/gadm41_SEN_3.shp"))
+
+
+```
+
+###Représentation graphique des decoupages administrative
+```{r}
+ #Sénégal 
+
+ggplot(SEN_adm0) +
+ aes(fill = COUNTRY) +
+ geom_sf(size = 1.2) +
+ scale_fill_manual(values = c(Senegal = "#96E431")) +
+ annotation_scale(location = "bl", width_hint = 0.5) + 
+ annotation_north_arrow(location = "tr", which_north = "true",    
+ style = north_arrow_fancy_orienteering)+
+ ggtitle("Carte du Sénégal") +
+ labs(fill = "Pays") +
+ theme_minimal()
+
+  #Sénégal Régions 
+ggplot(SEN_adm1) +
+ aes(fill = NAME_1) +
+ geom_sf(size = 1.2) +
+ scale_fill_hue(direction = 1) +
+ labs(fill = "Région") +
+ annotation_scale(location = "bl", width_hint = 0.5) + 
+ annotation_north_arrow(location = "tr", which_north = "true",    
+ style = north_arrow_fancy_orienteering)+
+ ggtitle("Région du Sénégal") +
+ theme_minimal()
+
+  #Sénégal départements 
+ggplot() +
+  geom_sf(data = SEN_adm2, aes(fill = NAME_2)) +
+  geom_sf_text(data = SEN_adm2, aes(label = NAME_2), size = 1.5,    color = "black") +
+  scale_fill_manual(values =      rainbow(length(unique(SEN_adm2$NAME_2)))) + # Utiliser des couleurs différentes pour chaque département
+  labs(fill = "Départements") +
+  ggtitle("Départements du Sénégal") +
+  theme_minimal()+
+  theme(legend.position = "none")#Ne pas afficher la légende
+
+#Sénégal Communes
+ggplot() +
+  geom_sf(data = SEN_adm3, aes(fill = NAME_3)) +
+  geom_sf_text(data = SEN_adm3, aes(label = NAME_3), size = 1,    color = "black") +
+  scale_fill_manual(values =      rainbow(length(unique(SEN_adm3$NAME_3)))) + # Utiliser des couleurs différentes pour chaque département
+  labs(fill = "Départements") +
+  ggtitle("Départements du Sénégal") +
+  theme_minimal()+
+  theme(legend.position = "none")#Ne pas afficher la légende
+
+
+# Pour une meilleure représentation des départements et des communes, on peut utiliser leaflet (carte dynamique)
+
+  #Sénégal Département
+#Ici On crée un "vecteur de couleur" avec une pallette de couleur (set3) qui contient 12 couleur. 
+random_colors <- sample(brewer.pal(n = 12, name = "Set3"), size = nrow(SEN_adm2), replace = TRUE)
+
+carte <-leaflet(SEN_adm2) %>%
+  addTiles()  %>%  # Ajout de la carte openstreet map par défaut
+  addPolygons( 
+    fillColor = random_colors,
+    color = "red",
+    weight = 1,
+    opacity = 2,
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      color= "red",
+      weight = 2,
+      bringToFront = TRUE
+    ),
+    label = ~as.character(NAME_2)
+  ) %>% 
+addMouseCoordinates()%>%  # Ajout des coordonnées GPS du pointeur de la souris
+addResetMapButton()%>%  # Recentrer la carte
+addFullscreenControl()%>%  #ajout du basculement en mode plein écran
+addSearchOSM()%>%  #ajout de la barre de recherche Openstreetmap
+addMeasure(position = "topleft",              #mesure des distances
+           primaryLengthUnit = "kilometers",
+           secondaryAreaUnit = FALSE)%>% 
+addScaleBar(       #ajout de l'échelle
+  position = "bottomleft" 
+)%>% 
+addMiniMap(
+  toggleDisplay = TRUE) #  minimap
+
+
+  #Sénégal Communes
+random_colors_1 <- sample(brewer.pal(n = 12, name = "Set3"), size = nrow(SEN_adm3), replace = TRUE)
+
+carte_1 <- leaflet(SEN_adm3) %>%
+  addTiles()  %>%  # Ajout de la carte openstreet map par défaut
+  addPolygons( 
+    fillColor = random_colors_1,
+    color = "red",
+    weight = 1,
+    opacity = 2,
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      color= "red",
+      weight = 2,
+      bringToFront = TRUE
+    ),
+    label = ~as.character(NAME_3)
+  ) %>% 
+addMouseCoordinates()%>%  # Ajout des coordonnées GPS du pointeur de la souris
+addResetMapButton()%>%  # Recentrer la carte
+addFullscreenControl()%>%  #ajout du basculement en mode plein écran
+addSearchOSM()%>%  #ajout de la barre de recherche Openstreetmap
+addMeasure(position = "topleft",              #mesure des distances
+           primaryLengthUnit = "kilometers",
+           secondaryAreaUnit = FALSE)%>% 
+addScaleBar(       #ajout de l'échelle
+  position = "bottomleft" 
+)%>% 
+addMiniMap(
+  toggleDisplay = TRUE) #  minimap
+
+carte
+carte_1
+```
+
+### Representation spatiale des PME suivant le sexe du dirigeant/responsable
+
+```{r}
+ggplot() +
+  geom_sf(data = SEN_adm0, fill = "white", color = "black") + #Ajouter la couche du Sénégal
+  geom_sf(data = projet_map, aes(fill = sexe, color = sexe), size = 1.45) + #Ajouter les points(PME)
+  scale_fill_hue(name = "Sexe") +
+  scale_color_hue(name = "Sexe") +
+  ggtitle("Représentation spatiale des PME suivant le sexe du dirigeant/responsable") +
+  annotation_scale(location = "tl", width_hint = 0.2) + 
+ annotation_north_arrow(location = "tr", which_north = "true",      
+ style = north_arrow_fancy_orienteering)+
+  theme_minimal()
+
+#Régions
+ggplot() +
+  geom_sf(data = SEN_adm1, fill = "white", color = "black") + # Ajouter la       couche du Sénégal
+  geom_sf_label(data = SEN_adm1, aes(label = NAME_1), size=1.5) + # Ajouter les noms des régions
+  #Ajouter les points(PME)
+  geom_sf(data = projet_map, aes(fill = sexe, color = sexe), size = 1.45)+
+  scale_fill_hue(name = "Sexe") +
+  scale_color_hue(name = "Sexe") +
+  ggtitle("Représentation spatiale des PME suivant le sexe du dirigeant/responsable") +
+  annotation_scale(location = "tl", width_hint = 0.2) + 
+ annotation_north_arrow(location = "tr", which_north = "true",      
+ style = north_arrow_fancy_orienteering)+
+  theme_minimal()
+
+
+title_1 <- tags$div(
+  ("Répartition spatiale des PME selon le sexe du dirigeant/responsable")
+)
+#Département
+pal <- colorFactor(c("blue", "red"), levels = projet_map$sexe)
+carte_2 <- leaflet(SEN_adm2) %>%
+  addTiles()  %>%  # Ajout de la carte openstreet map par défaut
+  addPolygons( 
+    fillColor = "transparent",
+    color = "black",
+    weight = 1,
+    opacity = 1,
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      color= "green",
+      weight = 2,
+      bringToFront = TRUE
+    ),
+    label = ~paste0(as.character(NAME_2)," ; ", as.character(NAME_1))
+  ) %>% 
+addCircleMarkers(data = projet_map,
+                 color = ~pal(sexe), radius=0.7) %>% #Ajouter les PME
+addMouseCoordinates()%>%  # Ajout des coordonnées GPS du pointeur de la souris
+addResetMapButton()%>%  # Recentrer la carte
+addFullscreenControl()%>%  #ajout du basculement en mode plein écran
+addSearchOSM()%>%  #ajout de la barre de recherche Openstreetmap
+addMeasure(position = "topleft",              #mesure des distances
+           primaryLengthUnit = "kilometers",
+           secondaryAreaUnit = FALSE)%>% 
+addScaleBar(       #ajout de l'échelle
+  position = "bottomleft" 
+)%>% 
+addLegend(data = projet_map,
+          position = "topright",
+          pal = pal, values = ~sexe,
+          title = "Legende",
+          opacity = 1) %>% 
+addControl(title_1, position = "bottomleft") %>%
+addMiniMap(
+  toggleDisplay = TRUE) #  minimap
+
+#Communes
+carte_3 <- leaflet(SEN_adm3) %>%
+  addTiles()  %>% 
+  addPolygons( 
+    fillColor = "transparent",
+    color = "black",
+    weight = 1,
+    opacity = 1,
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      color= "green",
+      weight = 2,
+      bringToFront = TRUE
+    ),
+    label = ~paste0(as.character(NAME_3), " ; ", as.character(NAME_2)," ; ", as.character(NAME_1))
+  ) %>% 
+addCircleMarkers(data = projet_map,
+                 color = ~pal(sexe), radius=0.7) %>% 
+addMouseCoordinates()%>%
+addResetMapButton()%>%  
+addFullscreenControl()%>% 
+addSearchOSM()%>%  
+addMeasure(position = "topleft",  
+           primaryLengthUnit = "kilometers",
+           secondaryAreaUnit = FALSE)%>% 
+addScaleBar(    
+  position = "bottomleft" 
+)%>% 
+addLegend(data = projet_map,
+          position = "topright",
+          pal = pal, values = ~sexe,
+          title = "Legende",
+          opacity = 1) %>% 
+addControl(title_1, position = "bottomleft") %>%
+addMiniMap(
+  toggleDisplay = TRUE) 
+
+carte_2
+carte_3
+```
+
+
+```{r}
+
+
+####### Representation spatiale des PME suivant le niveau d'éducation #######
+ggplot() +
+  geom_sf(data = SEN_adm0, fill = "white", color = "black") + #Ajouter la couche du Sénégal
+  geom_sf(data = projet_map, aes(fill = q25, color = q25), size = 1.45) + #Ajouter les points(PME)
+  scale_fill_hue(name = "Niveau d'éducation") +
+  scale_color_hue(name = "Niveau d'éducation") +
+  ggtitle("Représentation spatiale des PME suivant le niveau d'éducation") +
+  annotation_scale(location = "tl", width_hint = 0.2) + 
+ annotation_north_arrow(location = "tr", which_north = "true",      
+ style = north_arrow_fancy_orienteering)+
+  theme_minimal()
+
+#Régions
+ggplot() +
+  geom_sf(data = SEN_adm1, fill = "white", color = "black") + # Ajouter la       couche du Sénégal
+  geom_sf_label(data = SEN_adm1, aes(label = NAME_1), size=1.5) + # Ajouter les noms des régions
+  #Ajouter les points(PME)
+  geom_sf(data = projet_map, aes(fill = q25, color = q25), size = 1.45)+
+  scale_fill_hue(name = "Niveau d'éducation") +
+  scale_color_hue(name = "Niveau d'éducation") +
+  ggtitle("Représentation spatiale des PME suivant le niveau d'éducation") +
+  annotation_scale(location = "tl", width_hint = 0.2) + 
+ annotation_north_arrow(location = "tr", which_north = "true",      
+ style = north_arrow_fancy_orienteering)+
+theme_minimal()
+
+title <- tags$div(
+  ("Répartition spatiale des PME selon le niveau d'éducation du dirigeant/responsable")
+) 
+#Département
+pal_1 <- colorFactor(c("#FF5733", "#008080","#0000FF","#581845"), levels = projet_map$q25)
+carte_4 <- leaflet(SEN_adm2) %>%
+  addTiles()  %>%  # Ajout de la carte openstreet map par défaut
+  addPolygons( 
+    fillColor = "transparent",
+    color = "black",
+    weight = 1,
+    opacity = 1,
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      color= "green",
+      weight = 2,
+      bringToFront = TRUE
+    ),
+    label = ~paste0(as.character(NAME_2)," ; ", as.character(NAME_1))
+  ) %>% 
+addCircleMarkers(data = projet_map,
+                 color = ~pal_1(q25), radius=0.7) %>% 
+addMouseCoordinates()%>% 
+addResetMapButton()%>%
+addFullscreenControl()%>%  
+addSearchOSM()%>%  
+addMeasure(position = "topleft",             
+           primaryLengthUnit = "kilometers",
+           secondaryAreaUnit = FALSE)%>% 
+addScaleBar(      
+  position = "bottomleft" 
+)%>% 
+addLegend(data = projet_map,
+          position = "topright",
+          pal = pal_1, values = ~q25,
+          title = "Legende",
+          opacity = 1) %>% 
+addControl(title, position = "bottomleft") %>% 
+addMiniMap(
+  toggleDisplay = TRUE)
+
+#Communes
+carte_5 <- leaflet(SEN_adm3) %>%
+  addTiles()  %>% 
+  addPolygons( 
+    fillColor = "transparent",
+    color = "black",
+    weight = 1,
+    opacity = 1,
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      color= "green",
+      weight = 2,
+      bringToFront = TRUE
+    ),
+    label = ~paste0(as.character(NAME_3), " ; ", as.character(NAME_2)," ; ", as.character(NAME_1))
+  ) %>% 
+addCircleMarkers(data = projet_map,
+                 color = ~pal_1(q25), radius=0.7) %>% 
+addMouseCoordinates()%>%
+addResetMapButton()%>%  
+addFullscreenControl()%>% 
+addSearchOSM()%>%  
+addMeasure(position = "topleft",  
+           primaryLengthUnit = "kilometers",
+           secondaryAreaUnit = FALSE)%>% 
+addScaleBar(    
+  position = "bottomleft" 
+)%>% 
+addLegend(data = projet_map,
+          position = "topright",
+          pal = pal_1, values = ~q25,
+          title = "Legende",
+          opacity = 1) %>% 
+addControl(title, position = "bottomleft") %>% 
+addMiniMap(
+  toggleDisplay = TRUE) 
+carte_4
+carte_5
+```
+
+### Analyse de le répartition spatiale des PME agroalimentaires au Sénégal
+
+La cartographie de la répartition des PME agroalimentaires révèle une concentration significative dans les régions de Dakar et Thiès, s'étendant vers le centre du pays, notamment dans les régions de Fatick et Kaolack. Des poches d'activité sont également observées dans le sud, principalement à Ziguinchor, et dans le nord, à Saint-Louis. En revanche, les régions de l'est du pays c'est desert en termes de présence de PME agroalimentaires.
+
+Une exploration plus détaillée des disparités de répartition au niveau des départements met en lumière une agglomération des PME agroalimentaires, notamment dans les départements de Mbour, Thiès, Ziguinchor, Dagana et Bambey. Une caractéristique notable est la forte implication des femmes dans la gestion de ces entreprises, ce qui souligne leur rôle crucial dans le tissu entrepreneurial local.
+
+Plusieurs facteurs peuvent expliquer ces tendances. Outre la proximité des marchés et des infrastructures de soutien, des variables telles que l'accès aux ressources agricoles, les politiques de développement économique régional, et le niveau d'éducation et de formation des entrepreneurs jouent un rôle crucial. 
